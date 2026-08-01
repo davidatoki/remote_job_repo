@@ -26,6 +26,18 @@ function saveSeen(seenSet) {
   fs.writeFileSync(SEEN_FILE, JSON.stringify([...seenSet], null, 2));
 }
 
+// Strip HTML tags from descriptions (many APIs return HTML-formatted text)
+function stripHtml(html) {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ---------- SOURCE 1: REMOTEOK (free, no key needed) ----------
 async function fetchRemoteOK() {
   try {
@@ -38,6 +50,11 @@ async function fetchRemoteOK() {
       title: job.position,
       company: job.company,
       location: job.location || 'Remote',
+      description: stripHtml(job.description || '').slice(0, 400),
+      salary: job.salary_min && job.salary_max
+        ? `$${job.salary_min.toLocaleString()} - $${job.salary_max.toLocaleString()}`
+        : '',
+      deadline: '',
       url: job.url,
       tags: job.tags || [],
     }));
@@ -69,6 +86,11 @@ async function fetchAdzuna() {
       title: job.title,
       company: job.company?.display_name || 'Unknown',
       location: job.location?.display_name || COUNTRY.toUpperCase(),
+      description: stripHtml(job.description || '').slice(0, 400),
+      salary: job.salary_min && job.salary_max
+        ? `$${Math.round(job.salary_min).toLocaleString()} - $${Math.round(job.salary_max).toLocaleString()}`
+        : '',
+      deadline: '',
       url: job.redirect_url,
       tags: [],
     }));
@@ -104,6 +126,9 @@ async function fetchJooble() {
       title: job.title,
       company: job.company || 'Unknown',
       location: job.location || 'Various',
+      description: stripHtml(job.snippet || '').slice(0, 400),
+      salary: job.salary || '',
+      deadline: '',
       url: job.link,
       tags: [],
     }));
@@ -113,7 +138,30 @@ async function fetchJooble() {
   }
 }
 
-// ---------- SOURCE 4: SCHOLARSHIPS via RSS feed ----------
+// ---------- SOURCE 5: REMOTIVE (free, no key needed) ----------
+async function fetchRemotive() {
+  try {
+    const res = await fetch('https://remotive.com/api/remote-jobs');
+    const data = await res.json();
+    return (data.jobs || []).map(job => ({
+      id: `remotive-${job.id}`,
+      type: 'job',
+      title: job.title,
+      company: job.company_name,
+      location: job.candidate_required_location || 'Remote',
+      description: stripHtml(job.description || '').slice(0, 400),
+      salary: job.salary || '',
+      deadline: '',
+      url: job.url,
+      tags: job.tags || [],
+    }));
+  } catch (err) {
+    console.error('Remotive fetch failed:', err.message);
+    return [];
+  }
+}
+
+
 // Works with any scholarship site that publishes an RSS feed.
 // Set SCHOLARSHIP_RSS_URL to the feed's URL (look for a "/feed" or "rss.xml" link on the site).
 const Parser = require('rss-parser');
@@ -148,11 +196,14 @@ async function fetchScholarships() {
 // ---------- FORMAT: turn raw listing into a Telegram-ready message ----------
 function formatMessage(item) {
   if (item.type === 'job') {
-    const tagLine = item.tags.length ? `\n🏷️ ${item.tags.slice(0, 5).join(', ')}` : '';
+    const tagLine = item.tags?.length ? `\n🏷️ ${item.tags.slice(0, 5).join(', ')}` : '';
+    const salaryLine = item.salary ? `\n💰 ${escapeMd(item.salary)}` : '';
+    const descLine = item.description ? `\n\n📝 ${escapeMd(item.description)}${item.description.length >= 400 ? '...' : ''}` : '';
     return (
       `💼 *${escapeMd(item.title)}*\n` +
       `🏢 ${escapeMd(item.company)}\n` +
-      `📍 ${escapeMd(item.location)}${tagLine}\n\n` +
+      `📍 ${escapeMd(item.location)}${salaryLine}${tagLine}` +
+      `${descLine}\n\n` +
       `🔗 [Apply here](${item.url})`
     );
   }
@@ -200,14 +251,15 @@ async function run() {
   }
 
   console.log('Fetching listings from all sources...');
-  const [remoteOkJobs, adzunaJobs, joobleJobs, scholarships] = await Promise.all([
+  const [remoteOkJobs, adzunaJobs, joobleJobs, remotiveJobs, scholarships] = await Promise.all([
     fetchRemoteOK(),
     fetchAdzuna(),
     fetchJooble(),
+    fetchRemotive(),
     fetchScholarships(),
   ]);
 
-  const allItems = [...remoteOkJobs, ...adzunaJobs, ...joobleJobs, ...scholarships];
+  const allItems = [...remoteOkJobs, ...adzunaJobs, ...joobleJobs, ...remotiveJobs, ...scholarships];
   console.log(`Fetched ${allItems.length} total listings.`);
 
   const seen = loadSeen();

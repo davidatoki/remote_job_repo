@@ -196,9 +196,12 @@ async function fetchScholarships() {
 // ---------- FORMAT: turn raw listing into a Telegram-ready message ----------
 function formatMessage(item) {
   if (item.type === 'job') {
-    const tagLine = item.tags?.length ? `\n🏷️ ${item.tags.slice(0, 5).join(', ')}` : '';
+    const tagLine = item.tags?.length ? `\n🏷️ ${item.tags.slice(0, 5).map(escapeMd).join(', ')}` : '';
     const salaryLine = item.salary ? `\n💰 ${escapeMd(item.salary)}` : '';
-    const descLine = item.description ? `\n\n📝 ${escapeMd(item.description)}${item.description.length >= 400 ? '...' : ''}` : '';
+    const truncated = item.description && item.description.length >= 400;
+    const descLine = item.description
+      ? `\n\n📝 ${escapeMd(item.description + (truncated ? '...' : ''))}`
+      : '';
     return (
       `💼 *${escapeMd(item.title)}*\n` +
       `🏢 ${escapeMd(item.company)}\n` +
@@ -268,11 +271,13 @@ async function run() {
 
   const toPost = newItems.slice(0, MAX_POSTS_PER_RUN);
 
+  let successCount = 0;
   for (const item of toPost) {
     try {
       const message = formatMessage(item);
       await postToTelegram(message);
       seen.add(item.id);
+      successCount++;
       console.log(`Posted: ${item.title}`);
       // Telegram rate limit: wait ~1.5s between messages
       await new Promise(r => setTimeout(r, 1500));
@@ -282,7 +287,7 @@ async function run() {
   }
 
   saveSeen(seen);
-  console.log(`Done. Posted ${toPost.length} new listing(s).`);
+  console.log(`Done. Posted ${successCount} of ${toPost.length} attempted listing(s).`);
 }
 
 run();

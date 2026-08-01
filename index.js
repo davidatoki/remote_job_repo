@@ -47,8 +47,8 @@ async function fetchRemoteOK() {
     return data.slice(1).map(job => ({
       id: `remoteok-${job.id}`,
       type: 'job',
-      title: job.position,
-      company: job.company,
+      title: stripHtml(job.position || ''),
+      company: stripHtml(job.company || ''),
       location: job.location || 'Remote',
       description: stripHtml(job.description || '').slice(0, 400),
       salary: job.salary_min && job.salary_max
@@ -83,8 +83,8 @@ async function fetchAdzuna() {
     return (data.results || []).map(job => ({
       id: `adzuna-${job.id}`,
       type: 'job',
-      title: job.title,
-      company: job.company?.display_name || 'Unknown',
+      title: stripHtml(job.title || ''),
+      company: stripHtml(job.company?.display_name || 'Unknown'),
       location: job.location?.display_name || COUNTRY.toUpperCase(),
       description: stripHtml(job.description || '').slice(0, 400),
       salary: job.salary_min && job.salary_max
@@ -123,8 +123,8 @@ async function fetchJooble() {
     return (data.jobs || []).map(job => ({
       id: `jooble-${job.id}`,
       type: 'job',
-      title: job.title,
-      company: job.company || 'Unknown',
+      title: stripHtml(job.title || ''),
+      company: stripHtml(job.company || 'Unknown'),
       location: job.location || 'Various',
       description: stripHtml(job.snippet || '').slice(0, 400),
       salary: job.salary || '',
@@ -146,8 +146,8 @@ async function fetchRemotive() {
     return (data.jobs || []).map(job => ({
       id: `remotive-${job.id}`,
       type: 'job',
-      title: job.title,
-      company: job.company_name,
+      title: stripHtml(job.title || ''),
+      company: stripHtml(job.company_name || ''),
       location: job.candidate_required_location || 'Remote',
       description: stripHtml(job.description || '').slice(0, 400),
       salary: job.salary || '',

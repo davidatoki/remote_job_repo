@@ -1,0 +1,37 @@
+name: Auto-post jobs and scholarships
+
+on:
+  schedule:
+    # Runs every 3 hours. Change the cron expression to adjust timing.
+    # Format: minute hour day month weekday (all in UTC time)
+    - cron: '0 */3 * * *'
+  workflow_dispatch: {}   # lets you manually trigger a run from the GitHub Actions tab, for testing
+
+jobs:
+  post-listings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run the bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          ADZUNA_COUNTRY: us
+        run: node index.js
+
+      - name: Commit updated seen.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add seen.json
+          git diff --staged --quiet || git commit -m "Update seen listings [skip ci]"
+          git push

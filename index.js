@@ -193,6 +193,41 @@ async function fetchScholarships() {
 }
 
 
+// ---------- AI REFORMAT: clean up messy descriptions using Gemini ----------
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+async function reformatWithAI(item) {
+  if (!GEMINI_API_KEY) return item; // skip silently if not configured
+
+  const rawText = item.type === 'job'
+    ? `Title: ${item.title}\nCompany: ${item.company}\nLocation: ${item.location}\nSalary: ${item.salary || 'not listed'}\nDescription: ${item.description || 'none provided'}`
+    : `Title: ${item.title}\nLocation: ${item.location}\nDescription: ${item.description || 'none provided'}`;
+
+  const prompt = item.type === 'job'
+    ? `Rewrite this job listing into a short, clear, engaging summary for a Telegram job channel post. 2-3 sentences max, plain text only (no markdown, no asterisks, no headers). Mention what the role involves and who it might suit. Do not invent details not given.\n\n${rawText}`
+    : `Rewrite this scholarship listing into a short, clear, engaging summary for a Telegram channel post. 2-3 sentences max, plain text only (no markdown, no asterisks, no headers). Mention who it's for and what it covers if known. Do not invent details not given.\n\n${rawText}`;
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    });
+    const data = await res.json();
+    const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (aiText) {
+      return { ...item, description: aiText };
+    }
+    return item; // fall back to original description if AI gave nothing usable
+  } catch (err) {
+    console.error(`AI reformat failed for "${item.title}":`, err.message);
+    return item; // fall back to original on any error — never block posting over this
+  }
+}
+
 // ---------- FORMAT: turn raw listing into a Telegram-ready message ----------
 function formatMessage(item) {
   if (item.type === 'job') {
@@ -274,7 +309,8 @@ async function run() {
   let successCount = 0;
   for (const item of toPost) {
     try {
-      const message = formatMessage(item);
+      const enrichedItem = await reformatWithAI(item);
+      const message = formatMessage(enrichedItem);
       await postToTelegram(message);
       seen.add(item.id);
       successCount++;

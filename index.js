@@ -78,15 +78,72 @@ async function fetchAdzuna() {
   }
 }
 
-// ---------- SOURCE 3: SCHOLARSHIPS (placeholder — plug in a scraper or API here) ----------
-// Most scholarship sites have no public API. Options:
-//   1. Find sites that offer RSS feeds (check for /feed or /rss.xml on scholarship blogs)
-//   2. Use a scraping library (Playwright/Cheerio) on ONE site at a time, respecting robots.txt
-// This function is a stub so the pipeline runs end-to-end; replace with a real source when ready.
-async function fetchScholarships() {
-  console.log('Scholarship source not yet connected — add a scraper or RSS feed here.');
-  return [];
+// ---------- SOURCE 3: JOOBLE (free, needs an API key) ----------
+// Sign up free at https://jooble.org/api/about
+async function fetchJooble() {
+  const API_KEY = process.env.JOOBLE_API_KEY;
+  const KEYWORDS = process.env.JOOBLE_KEYWORDS || ''; // blank = all jobs
+  const LOCATION = process.env.JOOBLE_LOCATION || ''; // blank = worldwide
+
+  if (!API_KEY) {
+    console.log('Jooble not configured — skipping (set JOOBLE_API_KEY to enable)');
+    return [];
+  }
+
+  try {
+    const url = `https://jooble.org/api/${API_KEY}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: KEYWORDS, location: LOCATION }),
+    });
+    const data = await res.json();
+    return (data.jobs || []).map(job => ({
+      id: `jooble-${job.id}`,
+      type: 'job',
+      title: job.title,
+      company: job.company || 'Unknown',
+      location: job.location || 'Various',
+      url: job.link,
+      tags: [],
+    }));
+  } catch (err) {
+    console.error('Jooble fetch failed:', err.message);
+    return [];
+  }
 }
+
+// ---------- SOURCE 4: SCHOLARSHIPS via RSS feed ----------
+// Works with any scholarship site that publishes an RSS feed.
+// Set SCHOLARSHIP_RSS_URL to the feed's URL (look for a "/feed" or "rss.xml" link on the site).
+const Parser = require('rss-parser');
+const rssParser = new Parser();
+
+async function fetchScholarships() {
+  const FEED_URL = process.env.SCHOLARSHIP_RSS_URL;
+
+  if (!FEED_URL) {
+    console.log('Scholarship RSS feed not configured — skipping (set SCHOLARSHIP_RSS_URL to enable)');
+    return [];
+  }
+
+  try {
+    const feed = await rssParser.parseURL(FEED_URL);
+    return (feed.items || []).map(item => ({
+      // Use the link as a stable unique id since RSS items don't always have one
+      id: `scholarship-${item.link}`,
+      type: 'scholarship',
+      title: item.title,
+      location: 'International',
+      deadline: '', // most RSS feeds don't include a structured deadline — leave blank or parse item.contentSnippet if needed
+      url: item.link,
+    }));
+  } catch (err) {
+    console.error('Scholarship RSS fetch failed:', err.message);
+    return [];
+  }
+}
+
 
 // ---------- FORMAT: turn raw listing into a Telegram-ready message ----------
 function formatMessage(item) {
@@ -143,13 +200,14 @@ async function run() {
   }
 
   console.log('Fetching listings from all sources...');
-  const [remoteOkJobs, adzunaJobs, scholarships] = await Promise.all([
+  const [remoteOkJobs, adzunaJobs, joobleJobs, scholarships] = await Promise.all([
     fetchRemoteOK(),
     fetchAdzuna(),
+    fetchJooble(),
     fetchScholarships(),
   ]);
 
-  const allItems = [...remoteOkJobs, ...adzunaJobs, ...scholarships];
+  const allItems = [...remoteOkJobs, ...adzunaJobs, ...joobleJobs, ...scholarships];
   console.log(`Fetched ${allItems.length} total listings.`);
 
   const seen = loadSeen();

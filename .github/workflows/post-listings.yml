@@ -29,6 +29,7 @@ jobs:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           ADZUNA_COUNTRY: us
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node index.js
 
       - name: Commit updated seen.json

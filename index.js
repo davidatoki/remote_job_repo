@@ -197,7 +197,10 @@ async function fetchScholarships() {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 async function reformatWithAI(item) {
-  if (!GEMINI_API_KEY) return item; // skip silently if not configured
+  if (!GEMINI_API_KEY) {
+    console.log(`GEMINI_API_KEY not set — skipping AI reformat for "${item.title}"`);
+    return item;
+  }
 
   const rawText = item.type === 'job'
     ? `Title: ${item.title}\nCompany: ${item.company}\nLocation: ${item.location}\nSalary: ${item.salary || 'not listed'}\nDescription: ${item.description || 'none provided'}`
@@ -217,14 +220,20 @@ async function reformatWithAI(item) {
       }),
     });
     const data = await res.json();
+    if (data.error) {
+      console.error(`Gemini API returned an error for "${item.title}": ${JSON.stringify(data.error)}`);
+      return item;
+    }
     const aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (aiText) {
+      console.log(`AI reformatted: "${item.title}"`);
       return { ...item, description: aiText };
     }
-    return item; // fall back to original description if AI gave nothing usable
+    console.log(`Gemini returned no usable text for "${item.title}" — raw response: ${JSON.stringify(data).slice(0, 300)}`);
+    return item;
   } catch (err) {
-    console.error(`AI reformat failed for "${item.title}":`, err.message);
-    return item; // fall back to original on any error — never block posting over this
+    console.error(`AI reformat request failed for "${item.title}":`, err.message);
+    return item;
   }
 }
 
